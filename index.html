@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>星际信笺</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Noto+Serif+SC:wght@200;300;400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  :root{
+    --ink:#e8eef6; --soft:#aebfd8; --dim:#7e8ca6;
+    --accent:#cdd9ea; --glow:rgba(150,180,225,.6);
+    --serif:'Noto Serif SC',serif; --display:'Cormorant Garamond',serif;
+  }
+  html,body{height:100%;overflow:hidden;background:#02040a;color:var(--ink);font-family:var(--serif);font-weight:300}
+  body{user-select:none}
+  canvas{display:block}
+
+  /* 底层银河图 */
+  #bg-galaxy{position:fixed;inset:0;z-index:0;background:#02040a}
+  #bg-dim{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 46%,transparent 40%,rgba(2,4,10,.55) 100%)}
+  /* 点云 canvas 由引擎插入 body，z-index 提到背景之上 */
+  body > canvas{position:fixed!important;inset:0;z-index:2!important}
+
+  /* 密码门 */
+  #gate{position:fixed;inset:0;z-index:1000;background:#02040a;display:flex;align-items:center;justify-content:center;transition:opacity 1.2s ease}
+  #gate.opened{opacity:0;pointer-events:none}
+  #gate::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 50%,rgba(40,55,90,.28),transparent 60%)}
+  #gate-stars{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+  .gate-box{position:relative;z-index:1;text-align:center;padding:0 28px}
+  .gate-box.shake{animation:shake .45s}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+  .gate-kicker{font-family:var(--display);font-style:italic;font-size:clamp(16px,2.2vw,20px);color:var(--soft);letter-spacing:.14em;margin-bottom:14px;opacity:.9}
+  .gate-title{font-weight:200;font-size:clamp(28px,5vw,46px);letter-spacing:.2em;margin-bottom:40px;text-shadow:0 0 40px var(--glow)}
+  .gate-field{display:flex;gap:10px;justify-content:center}
+  #pw-input{background:rgba(180,200,230,.06);border:1px solid rgba(160,185,220,.3);border-radius:50px;padding:13px 24px;color:var(--ink);font-family:var(--serif);font-size:15px;letter-spacing:.1em;outline:none;width:200px;text-align:center;transition:border-color .3s}
+  #pw-input:focus{border-color:rgba(160,185,220,.7)}
+  #pw-btn{background:transparent;border:1px solid rgba(160,185,220,.45);border-radius:50px;color:var(--ink);padding:13px 26px;font-family:var(--serif);font-size:14px;letter-spacing:.1em;cursor:pointer;transition:all .35s}
+  #pw-btn:hover{background:rgba(190,210,240,.9);border-color:rgba(190,210,240,.9);color:#0a0f18}
+  #pw-hint{margin-top:20px;font-family:var(--display);font-style:italic;font-size:15px;color:#c98b8b;letter-spacing:.05em;opacity:0;transition:opacity .4s}
+  #pw-hint.show{opacity:1}
+
+  /* 加载 */
+  #loading{position:fixed;bottom:36px;left:0;right:0;text-align:center;z-index:30;font-family:var(--display);font-style:italic;color:var(--dim);font-size:14px;letter-spacing:.1em;transition:opacity .8s}
+  #loading.done{opacity:0;pointer-events:none}
+
+  /* 开场 */
+  #intro{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;transition:opacity 2s ease}
+  #intro.fade{opacity:0}
+  #site-kicker{font-family:var(--display);font-style:italic;font-size:clamp(18px,2.4vw,24px);color:var(--soft);letter-spacing:.12em;opacity:0;text-shadow:0 0 30px var(--glow)}
+  #site-name{font-weight:200;font-size:clamp(22px,3.8vw,42px);letter-spacing:.12em;margin:.35em 0 .7em;opacity:0;text-shadow:0 0 40px var(--glow);max-width:88vw;line-height:1.7;text-align:center}
+  #site-opening{font-size:clamp(14px,1.7vw,17px);color:var(--soft);max-width:32em;text-align:center;opacity:0;font-weight:300;line-height:1.9;padding:0 24px}
+  #intro.show #site-kicker{animation:rise 2s .1s forwards}
+  #intro.show #site-name{animation:rise 2s .8s forwards}
+  #intro.show #site-opening{animation:rise 2s 1.6s forwards}
+  @keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+
+  /* 短片轨道光球 */
+  #orbs-layer{position:fixed;inset:0;z-index:25;pointer-events:none;opacity:0;transition:opacity 2s ease}
+  #orbs-layer.show{opacity:1}
+  .film-orb{position:absolute;top:0;left:0;transform-origin:center;pointer-events:auto;cursor:pointer;margin:-7px 0 0 -7px}
+  .orb-core{width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 0 14px #fff,0 0 30px var(--glow),0 0 55px var(--glow);transition:transform .4s}
+  .film-orb::after{content:'';position:absolute;top:50%;left:50%;width:14px;height:14px;border-radius:50%;transform:translate(-50%,-50%);border:1px solid rgba(255,255,255,0);pointer-events:none}
+  .film-orb:hover::after{animation:halo 1.5s infinite ease-out}
+  @keyframes halo{0%{width:14px;height:14px;border-color:rgba(255,255,255,.9);opacity:1}100%{width:90px;height:90px;border-color:rgba(255,255,255,0);opacity:0}}
+  .film-orb:hover .orb-core{transform:scale(1.5)}
+  .orb-label{position:absolute;top:22px;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap;opacity:0;transition:opacity .4s;pointer-events:none}
+  .film-orb:hover .orb-label{opacity:1}
+  .orb-title{font-family:var(--display);font-style:italic;font-size:18px;color:#fff;letter-spacing:.05em;text-shadow:0 0 16px rgba(0,0,0,.9)}
+  .orb-date{font-size:12px;color:var(--soft);margin-top:2px;letter-spacing:.08em;text-shadow:0 0 12px rgba(0,0,0,.9)}
+
+  /* 公转星：参考 PDF 做法——纯白小圆 + 多层白色光晕，不实心、无体积感、无彩色 */
+  .film-orb .orb-core{width:12px;height:12px;background:#fff;
+    box-shadow:0 0 12px #fff,0 0 26px rgba(255,255,255,.9),0 0 46px rgba(255,255,255,.6)}
+  /* 主角星：比小星亮一些、光晕更大，但同样是纯白发光点，缩小后约 22px 光球 */
+  .film-orb.is-main .orb-core{
+    width:22px;height:22px;background:#fff;
+    box-shadow:0 0 16px #fff,0 0 40px #fff,0 0 70px rgba(255,255,255,.8),0 0 110px rgba(255,255,255,.4);
+  }
+  .film-orb.is-main{margin:-11px 0 0 -11px}
+  /* 八颗小星只作点缀，不可点击 */
+  .film-orb:not(.is-main){pointer-events:none}
+
+  /* 底部行星导航（参考图一底部那排月份的克制气质） */
+  #planet-nav{position:fixed;left:0;right:0;bottom:74px;z-index:42;
+    display:flex;justify-content:center;align-items:flex-end;gap:clamp(22px,4vw,52px);
+    pointer-events:none;opacity:0;transition:opacity 1.2s ease;padding:0 80px}
+  #planet-nav.show{opacity:1}
+  .planet-item{position:relative;pointer-events:auto;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:9px;
+    padding:6px 4px 0;transition:transform .4s ease;--p-color:#cdd9ea}
+  .planet-item:hover{transform:translateY(-4px)}
+  .planet-dot{width:6px;height:6px;border-radius:50%;
+    background:rgba(205,217,234,.45);transition:all .45s ease}
+  .planet-item:hover .planet-dot{background:var(--p-color);
+    box-shadow:0 0 10px var(--p-color),0 0 22px var(--p-color)}
+  .planet-item.active .planet-dot{width:11px;height:11px;background:#fff;
+    box-shadow:0 0 12px #fff,0 0 26px var(--p-color),0 0 48px var(--p-color)}
+  .planet-name{font-family:var(--display);font-style:italic;letter-spacing:.08em;
+    font-size:15px;color:var(--dim);transition:color .45s ease;white-space:nowrap;
+    text-shadow:0 0 14px rgba(0,0,0,.7)}
+  .planet-item:hover .planet-name{color:var(--soft)}
+  .planet-item.active .planet-name{color:#fff;font-style:normal;font-weight:400}
+  .planet-meaning{position:absolute;bottom:100%;margin-bottom:12px;
+    font-size:12px;color:var(--soft);letter-spacing:.06em;white-space:nowrap;
+    opacity:0;transform:translateY(6px);transition:all .4s ease;pointer-events:none;
+    text-shadow:0 0 14px rgba(0,0,0,.9)}
+  .planet-item:hover .planet-meaning,.planet-item.active .planet-meaning{opacity:.85;transform:none}
+
+  /* ===== 记忆星图页（第三层）===== */
+  #starmap{position:fixed;inset:0;z-index:80;background:#000;opacity:0;pointer-events:none;
+    transition:opacity 1s ease}
+  #starmap.show{opacity:1;pointer-events:auto}
+  /* 图四星云照片打底：压暗，让上层闪烁的星尘星云（图二效果）更突出清晰 */
+  #sm-bg{position:absolute;inset:0;background:url('./assets/nebula.png') center/cover no-repeat;
+    filter:brightness(.42) contrast(1.12)}
+  #sm-bg::after{content:'';position:absolute;inset:0;
+    background:radial-gradient(ellipse at 50% 50%,rgba(1,3,9,.3) 28%,rgba(1,3,9,.72) 100%)}
+  /* canvas 星尘叠在底图之上，screen 混合让闪烁更亮更清晰（图二那层炸开聚拢的星尘）*/
+  #sm-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;mix-blend-mode:screen}
+  #sm-back{position:fixed;top:30px;left:34px;z-index:82;font-family:var(--display);font-style:italic;
+    font-size:16px;color:rgba(205,217,234,.66);cursor:pointer;letter-spacing:.06em;transition:color .3s}
+  #sm-back:hover{color:#fff}
+  #sm-title{position:fixed;top:30px;left:0;right:0;z-index:81;text-align:center;pointer-events:none;
+    font-family:var(--display);font-style:italic;font-size:15px;color:var(--soft);letter-spacing:.16em;opacity:.7}
+  /* 日期小球层 */
+  #sm-orbs{position:absolute;inset:0;z-index:83;pointer-events:none}
+  .sm-orb{position:absolute;top:0;left:0;margin:-9px 0 0 -9px;pointer-events:auto;cursor:pointer}
+  .sm-orb-core{width:16px;height:16px;border-radius:50%;background:#fff;
+    box-shadow:0 0 14px #fff,0 0 34px #fff,0 0 60px rgba(255,255,255,.7),0 0 100px rgba(255,255,255,.4);
+    transition:transform .4s}
+  .sm-orb:hover .sm-orb-core{transform:scale(1.35)}
+
+  /* 右下：写给你的话 */
+  #open-notes{position:fixed;bottom:34px;right:36px;z-index:40;cursor:pointer;font-family:var(--display);font-style:italic;font-size:16px;color:var(--soft);letter-spacing:.06em;opacity:0;transition:all .5s;text-shadow:0 0 14px rgba(0,0,0,.6)}
+  #open-notes.show{opacity:.72}
+  #open-notes:hover{color:#fff;opacity:1}
+
+  /* 左下：音乐 */
+  #music-btn{position:fixed;bottom:34px;left:36px;z-index:40;cursor:pointer;background:transparent;border:none;color:var(--soft);font-family:var(--display);font-style:italic;font-size:16px;letter-spacing:.06em;opacity:0;transition:all .5s;display:flex;align-items:center;gap:8px;text-shadow:0 0 14px rgba(0,0,0,.6)}
+  #music-btn.show{opacity:.72}
+  #music-btn:hover{color:#fff;opacity:1}
+  #music-btn .music-icon{font-size:15px;transition:transform .5s}
+  #music-btn.playing{opacity:1;color:#fff}
+  #music-btn.playing .music-icon{animation:floatnote 3s ease-in-out infinite}
+  @keyframes floatnote{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-3px) rotate(10deg)}}
+
+  /* 顶部：月相 */
+  #moon-phase{position:fixed;top:30px;right:34px;z-index:40;display:flex;align-items:center;gap:10px;opacity:0;transition:opacity .8s}
+  #moon-phase.show{opacity:.8}
+  #moon-phase .moon-icon{width:22px;height:22px;background-size:contain;background-repeat:no-repeat;background-position:center;filter:drop-shadow(0 0 4px rgba(255,255,255,.6))}
+  #moon-phase .moon-name{font-family:var(--display);font-style:italic;font-size:14px;color:var(--soft);letter-spacing:.06em}
+
+  /* 播放页 */
+  #player{position:fixed;inset:0;z-index:95;background:rgba(1,2,6,.97);backdrop-filter:blur(12px);opacity:0;pointer-events:none;transition:opacity .7s ease;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px}
+  #player-stars{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+  #player-title,#player-date,#player-desc{display:none}
+  #player-frame{position:relative;z-index:1}
+  #player.show{opacity:1;pointer-events:auto}
+  #player-title{font-family:var(--display);font-style:italic;font-size:clamp(24px,3vw,32px);color:var(--ink);letter-spacing:.05em}
+  #player-date{font-size:13px;color:var(--soft);letter-spacing:.1em;margin-top:-12px}
+  #player-frame{width:min(86vw,960px);aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;border:1px solid rgba(160,185,220,.22);box-shadow:0 30px 90px -30px rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;position:relative}
+  .frame-placeholder{color:#6f8099;font-family:var(--display);font-style:italic;font-size:20px;text-align:center;line-height:1.8}
+  .frame-placeholder span{font-size:13px;color:#56657d}
+  #player-desc{color:var(--soft);font-weight:300;font-size:15px;max-width:46ch;text-align:center;line-height:1.9}
+  #player-back{position:fixed;top:34px;left:34px;z-index:96;font-family:var(--display);font-style:italic;font-size:17px;color:rgba(205,217,234,.7);cursor:pointer;letter-spacing:.05em;transition:color .3s}
+  #player-back:hover{color:#fff}
+
+  /* 写给你的话 面板 */
+  #notes{position:fixed;inset:0;z-index:70;background:rgba(1,2,6,.97);backdrop-filter:blur(14px);opacity:0;pointer-events:none;transition:opacity .7s ease;display:flex;align-items:center;justify-content:center;padding:24px}
+  #notes-stars{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+  #notes-back,.notes-letter{position:relative;z-index:1}
+  #notes.show{opacity:1;pointer-events:auto}
+  .notes-letter{max-width:680px}
+  #notes-title{font-family:var(--display);font-style:italic;font-size:clamp(24px,3vw,30px);color:var(--accent);text-align:center;margin-bottom:48px;letter-spacing:.06em}
+  #notes-body p{font-size:16px;color:var(--ink);line-height:2.2;margin-bottom:2em;text-indent:0;font-weight:300;letter-spacing:.03em}
+  #notes-body .notes-sign{text-align:right;text-indent:0;font-family:var(--display);font-style:italic;color:var(--accent);font-size:19px}
+  #notes-back{position:fixed;top:34px;left:34px;z-index:71;font-family:var(--display);font-style:italic;font-size:17px;color:rgba(205,217,234,.7);cursor:pointer;letter-spacing:.05em;transition:color .3s}
+  #notes-back:hover{color:#fff}
+</style>
+</head>
+<body>
+
+<div id="bg-galaxy"></div>
+<div id="bg-dim"></div>
+
+<!-- 密码门 -->
+<div id="gate">
+  <canvas id="gate-stars"></canvas>
+  <div class="gate-box">
+    <div class="gate-kicker"></div>
+    <div class="gate-title">星 际 信 笺</div>
+    <div class="gate-field">
+      <input id="pw-input" type="password" placeholder="输入那把钥匙" autocomplete="off">
+      <button id="pw-btn">进入</button>
+    </div>
+    <div id="pw-hint"></div>
+  </div>
+</div>
+
+<!-- 开场 -->
+<div id="intro">
+  <div id="site-kicker"></div>
+  <div id="site-name"></div>
+  <div id="site-opening"></div>
+</div>
+
+<!-- 轨道光球层 -->
+<div id="orbs-layer"></div>
+
+<!-- 底部行星导航 -->
+<div id="planet-nav"></div>
+
+<!-- 月相 -->
+<div id="moon-phase"><div class="moon-icon"></div><div class="moon-name"></div></div>
+
+<!-- 写给你的话 入口（已移除） -->
+
+<!-- 音乐 -->
+<audio id="bgm" loop preload="auto">
+  <source src="./assets/bgm.mp3" type="audio/mpeg">
+</audio>
+<button id="music-btn"><span class="music-icon">♪</span> <span class="music-label">星空漫步</span></button>
+
+<!-- 加载 -->
+<div id="loading">星河汇聚中 <span id="loading-pct">0%</span></div>
+
+<!-- 记忆星图页（第三层） -->
+<div id="starmap">
+  <div id="sm-bg"></div>
+  <canvas id="sm-canvas"></canvas>
+  <div id="sm-back">← 回到星河</div>
+  <div id="sm-title"><span id="sm-planet-name"></span> · 记忆星图</div>
+  <div id="sm-orbs"></div>
+</div>
+
+<!-- 播放页 -->
+<div id="player">
+  <canvas id="player-stars"></canvas>
+  <div id="player-back">← 回到星河</div>
+  <div id="player-title"></div>
+  <div id="player-date"></div>
+  <div id="player-frame"></div>
+  <div id="player-desc"></div>
+</div>
+
+<!-- 写给你的话 -->
+<div id="notes">
+  <canvas id="notes-stars"></canvas>
+  <div id="notes-back">← 回到星河</div>
+  <div class="notes-letter">
+    <div id="notes-title"></div>
+    <div id="notes-body"></div>
+  </div>
+</div>
+
+<script>
+// 密码页星空：细碎缓慢闪烁，纯氛围
+(function(){
+  const c = document.getElementById('gate-stars');
+  if(!c) return;
+  const x = c.getContext('2d');
+  let W, H, stars = [], raf, running = true;
+  function resize(){
+    const dpr = Math.min(window.devicePixelRatio||1, 2);
+    W = c.width = innerWidth * dpr; H = c.height = innerHeight * dpr;
+    c.style.width = innerWidth+'px'; c.style.height = innerHeight+'px';
+    const n = Math.floor((innerWidth*innerHeight)/6000); // 密度随屏幕
+    stars = [];
+    for(let i=0;i<n;i++){
+      stars.push({
+        x: Math.random()*W, y: Math.random()*H,
+        r: (Math.random()*1.2+0.4)*dpr,
+        base: Math.random()*0.08,        // 底光很低：暗到几乎看不见
+        amp: Math.random()*0.5+0.5,      // 起伏大：能亮到很亮
+        sp: Math.random()*1.2+0.7,       // 各自呼吸快慢不同（整体更快）
+        ph: Math.random()*Math.PI*2,
+        warm: Math.random()<0.15
+      });
+    }
+  }
+  let t=0;
+  function draw(){
+    if(!running) return;
+    t += 0.02;   // 整体节奏更快
+    x.clearRect(0,0,W,H);
+    for(const s of stars){
+      // 0~1 的呼吸波；用幂次让"亮"成为短暂高潮，多数时间偏暗
+      let wave = 0.5 + 0.5*Math.sin(t*s.sp + s.ph);
+      wave = Math.pow(wave, 2.2);
+      const a = Math.max(0, Math.min(1, s.base + s.amp*wave));
+      x.beginPath();
+      x.arc(s.x, s.y, s.r, 0, 7);
+      x.fillStyle = s.warm
+        ? `rgba(255,238,210,${a})`
+        : `rgba(210,224,245,${a})`;
+      x.shadowBlur = s.r*7; x.shadowColor = x.fillStyle;  // 光晕更大更亮
+      x.fill();
+      // 亮到高潮时叠一层额外光晕，让它真正"发光"
+      if(a > 0.6){
+        x.beginPath();
+        x.arc(s.x, s.y, s.r*1.6, 0, 7);
+        x.fillStyle = s.warm
+          ? `rgba(255,244,224,${(a-0.6)*0.6})`
+          : `rgba(225,236,255,${(a-0.6)*0.6})`;
+        x.fill();
+      }
+    }
+    x.shadowBlur = 0;
+    raf = requestAnimationFrame(draw);
+  }
+  addEventListener('resize', resize);
+  resize(); draw();
+  // 密码通过后，#gate 加 .opened，停止动画省性能
+  const gate = document.getElementById('gate');
+  const obs = new MutationObserver(()=>{
+    if(gate.classList.contains('opened')){ running=false; cancelAnimationFrame(raf); obs.disconnect(); }
+  });
+  obs.observe(gate, { attributes:true, attributeFilter:['class'] });
+})();
+</script>
+
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
